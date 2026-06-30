@@ -43,7 +43,7 @@ tab1, tab2 = st.tabs(["📝 Analisis Teks Tunggal", "📂 Analisis Batch & Isu K
 with tab1:
     st.subheader("Uji Coba Sentimen Komentar")
     
-    # 1. Menyiapkan daftar kalimat acak (Bisa Anda tambah/ubah sendiri)
+    # 1. Daftar kalimat acak
     daftar_kalimat = [
         "Antrean di RS Mitra sangat lama dan adminnya kurang ramah, tolong diperbaiki.",
         "Pelayanan BPJS sekarang makin cepat dan sangat mudah karena ada JKN Mobile.",
@@ -53,30 +53,35 @@ with tab1:
         "Aplikasi mobile JKN sering error kalau mau ambil nomor antrean online, capek deh."
     ]
 
-    # 2. Membuat fungsi untuk mengocok kalimat (Session State)
+    # 2. Fungsi Session State
     if 'teks_input' not in st.session_state:
         st.session_state['teks_input'] = ""
 
     def pilih_kalimat_acak():
         st.session_state['teks_input'] = random.choice(daftar_kalimat)
 
-    # 3. Membuat tata letak (Kolom untuk tombol Dadu)
-    col_teks, col_dadu = st.columns([4, 1])
+    # 3. Kotak Teks Input
+    user_input = st.text_area("Masukkan teks keluhan atau komentar:", key='teks_input')
     
-    with col_dadu:
-        st.markdown("<br>", unsafe_allow_html=True) # Spasi agar sejajar
-        st.button("🎲 Kalimat Acak", on_click=pilih_kalimat_acak, use_container_width=True)
-        
-    with col_teks:
-        # Perhatikan kita menggunakan key='teks_input' agar terhubung dengan Session State
-        user_input = st.text_area("Masukkan teks keluhan atau komentar:", key='teks_input')
+    st.markdown("<br>", unsafe_allow_html=True) # Jarak pemisah agar tidak terlalu mepet
 
-    # 4. Tombol Eksekusi
-    if st.button("Analisis Sentimen", type="primary"):
+    # 4. Tata Letak Tombol (Saling Bersebelahan)
+    col_analisis, col_dadu = st.columns([6, 1]) 
+    
+    with col_analisis:
+        # Tombol utama ditaruh di kolom kiri (lebar)
+        btn_analisis = st.button("🚀 Analisis Sentimen", type="primary", use_container_width=True)
+        
+    with col_dadu:
+        # Tombol dadu ditaruh di kolom kanan (kecil), teks dihilangkan
+        st.button("🎲", on_click=pilih_kalimat_acak, use_container_width=True, help="Munculkan kalimat acak")
+
+    # 5. Logika Eksekusi Analisis
+    if btn_analisis:
         if user_input.strip() == "":
-            st.warning("Teks tidak boleh kosong! Silakan ketik atau gunakan tombol 🎲 Kalimat Acak.")
+            st.warning("Teks tidak boleh kosong! Silakan ketik atau klik tombol 🎲 di sebelah kanan.")
         else:
-            with st.spinner("Menganalisis..."):
+            with st.spinner("Sistem Menganalisis..."):
                 hasil = classifier(user_input)[0]
                 label = hasil['label'].capitalize()
                 skor = hasil['score'] * 100
