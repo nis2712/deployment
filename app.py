@@ -64,7 +64,7 @@ with tab1:
         st.button("🎲", on_click=pilih_kalimat_acak, use_container_width=True, help="Munculkan kalimat acak")
 
     if btn_analisis:
-        if user_input.strip() == "":
+        if df_negatif['Topik_ID'] != -1:
             st.warning("Teks tidak boleh kosong!")
         else:
             with st.spinner("Menganalisis..."):
