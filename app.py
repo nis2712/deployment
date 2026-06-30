@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 from transformers import pipeline
 import pickle
+import random
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="BPJS Command Center", layout="wide", page_icon="🏥")
@@ -41,11 +42,39 @@ tab1, tab2 = st.tabs(["📝 Analisis Teks Tunggal", "📂 Analisis Batch & Isu K
 # ==========================================
 with tab1:
     st.subheader("Uji Coba Sentimen Komentar")
-    user_input = st.text_area("Masukkan teks keluhan atau komentar:", placeholder="Contoh: Antrean di RS Mitra sangat lama dan adminnya kurang ramah.")
     
+    # 1. Menyiapkan daftar kalimat acak (Bisa Anda tambah/ubah sendiri)
+    daftar_kalimat = [
+        "Antrean di RS Mitra sangat lama dan adminnya kurang ramah, tolong diperbaiki.",
+        "Pelayanan BPJS sekarang makin cepat dan sangat mudah karena ada JKN Mobile.",
+        "Bagaimana prosedur pindah faskes tingkat 1 untuk bulan depan?",
+        "Kecewa banget, tagihan iuran bulan ini tiba-tiba naik padahal saya kelas 3.",
+        "Terima kasih BPJS, biaya operasi ayah saya ditanggung full tanpa biaya tambahan sedikitpun.",
+        "Aplikasi mobile JKN sering error kalau mau ambil nomor antrean online, capek deh."
+    ]
+
+    # 2. Membuat fungsi untuk mengocok kalimat (Session State)
+    if 'teks_input' not in st.session_state:
+        st.session_state['teks_input'] = ""
+
+    def pilih_kalimat_acak():
+        st.session_state['teks_input'] = random.choice(daftar_kalimat)
+
+    # 3. Membuat tata letak (Kolom untuk tombol Dadu)
+    col_teks, col_dadu = st.columns([4, 1])
+    
+    with col_dadu:
+        st.markdown("<br>", unsafe_allow_html=True) # Spasi agar sejajar
+        st.button("🎲 Kalimat Acak", on_click=pilih_kalimat_acak, use_container_width=True)
+        
+    with col_teks:
+        # Perhatikan kita menggunakan key='teks_input' agar terhubung dengan Session State
+        user_input = st.text_area("Masukkan teks keluhan atau komentar:", key='teks_input')
+
+    # 4. Tombol Eksekusi
     if st.button("Analisis Sentimen", type="primary"):
         if user_input.strip() == "":
-            st.warning("Teks tidak boleh kosong!")
+            st.warning("Teks tidak boleh kosong! Silakan ketik atau gunakan tombol 🎲 Kalimat Acak.")
         else:
             with st.spinner("Menganalisis..."):
                 hasil = classifier(user_input)[0]
