@@ -1,7 +1,6 @@
 import streamlit as st
 import subprocess
 import sys
-import os
 
 # --- INSTALASI OTOMATIS (Lazy Loading) ---
 def install_if_missing(package):
@@ -17,9 +16,8 @@ with st.spinner("Menyiapkan sistem..."):
 
 # --- IMPORT SETELAH INSTALASI ---
 import pandas as pd
-import plotly.express as px
-from transformers import pipeline
 import random
+from transformers import pipeline
 from gensim.models import LdaModel
 from gensim.corpora import Dictionary
 
@@ -42,34 +40,10 @@ classifier, lda_model, dictionary = load_models()
 
 # --- UI ---
 st.title("🏥 BPJS Health Command Center")
-tab1, tab2 = st.tabs(["📝 Analisis Teks", "📂 Analisis Batch (CSV)"])
+st.markdown("Sistem Analisis Sentimen dan Deteksi Isu Kritis.")
+st.divider()
 
-with tab1:
-    st.subheader("Uji Coba Sentimen")
-    
-    daftar_kalimat = [
-        "Antrean di RS Mitra sangat lama dan adminnya kurang ramah.",
-        "Pelayanan BPJS sekarang makin cepat dan sangat mudah.",
-        "Kecewa banget, tagihan iuran bulan ini tiba-tiba naik."
-    ]
-
-    if 'teks_input' not in st.session_state:
-        st.session_state['teks_input'] = ""
-
-    def pilih_kalimat_acak():
-        st.session_state['teks_input'] = random.choice(daftar_kalimat)
-
-    user_input = st.text_area("Masukkan teks:", key='teks_input')
-    
-    col_a, col_d = st.columns([6, 1])
-    with col_a:
-        btn = st.button("🚀 Analisis Sentimen", type="primary", use_container_width=True)
-    with col_d:
-        st.button("🎲", on_click=pilih_kalimat_acak, use_container_width=True)
-
-    if btn and user_input:
-        hasil = classifier(user_input)[0]
-        st.write(f"**Hasil:** {hasil['label'].capitalize()}")
+tab1, tab2 = st.tabs(["📝 Analisis Teks Tunggal", "📂 Analisis Batch (CSV)"])
 
 # --- TAB 1: TEKS TUNGGAL ---
 with tab1:
@@ -100,52 +74,55 @@ with tab1:
         st.button("🎲", on_click=pilih_kalimat_acak, use_container_width=True, help="Munculkan kalimat acak")
 
     if btn_analisis:
-        if df_negatif['Topik_ID'] != -1:
+        if user_input.strip() == "":
             st.warning("Teks tidak boleh kosong!")
         else:
             with st.spinner("Menganalisis..."):
                 hasil = classifier(user_input)[0]
                 label = hasil['label'].capitalize()
-                st.write(f"**Hasil Sentimen:** {label}")
+                st.success(f"**Hasil Sentimen:** {label}")
 
-# --- TAB 2: UPLOAD CSV ---
+# --- TAB 2: ANALISIS BATCH ---
 with tab2:
-    st.subheader("Unggah Dataset Cuitan Baru")
+    st.subheader("Unggah Dataset Cuitan")
     uploaded_file = st.file_uploader("Pilih file CSV (kolom: 'tweet_clean')", type=["csv"])
     
     if uploaded_file is not None and lda_model is not None:
         df_baru = pd.read_csv(uploaded_file, sep=";") 
         
-        with st.spinner("Memproses data..."):
-            texts = df_baru['tweet_clean'].fillna('').tolist()
-            results = classifier(texts, truncation=True, max_length=512)
-            df_baru['Sentimen'] = [res['label'].capitalize() for res in results]
-            
-            df_negatif = df_baru[df_baru['Sentimen'] == 'Negative'].copy()
-            
-            # Deteksi Isu
-            if not df_negatif.empty:
-                stopwords_tambahan = ['pakai', 'juga', 'buat', 'sama', 'pada', 'bukan', 'lagi', 'saja']
-                def clean_text(text):
-                    words = str(text).split()
-                    return [w for w in words if w.lower() not in stopwords_tambahan and len(w) > 2]
+        if 'tweet_clean' not in df_baru.columns:
+            st.error("Kolom 'tweet_clean' tidak ditemukan dalam CSV!")
+        else:
+            with st.spinner("Memproses data..."):
+                texts = df_baru['tweet_clean'].fillna('').tolist()
+                results = classifier(texts, truncation=True, max_length=512)
+                df_baru['Sentimen'] = [res['label'].capitalize() for res in results]
                 
-                texts_baru = df_negatif['tweet_clean'].apply(clean_text).tolist()
-                corpus_baru = [dictionary.doc2bow(text) for text in texts_baru]
+                df_negatif = df_baru[df_baru['Sentimen'] == 'Negative'].copy()
                 
-                topik_prediksi = []
-                for doc in corpus_baru:
-                    hasil_topik = lda_model.get_document_topics(doc)
-                    if hasil_topik:
-                        topik_tertinggi = max(hasil_topik, key=lambda x: x[1])[0]
-                        topik_prediksi.append(topik_tertinggi)
-                    else:
-                        topik_prediksi.append(-1)
-                
-                df_negatif['Topik_ID'] = topik_prediksi
-                topik_counts = df_negatif[df_negatif['Topik_ID'] != -1]['Topik_ID'].value_counts().to_dict()
-                
-                st.success("Proses Selesai!")
-                # Tampilkan hasil topik
-                for tid, count in topik_counts.items():
-                    st.error(f"⚠️ **Isu {tid+1}**: Ditemukan {count} keluhan.")
+                if not df_negatif.empty:
+                    stopwords_tambahan = ['pakai', 'juga', 'buat', 'sama', 'pada', 'bukan', 'lagi', 'saja']
+                    def clean_text(text):
+                        words = str(text).split()
+                        return [w for w in words if w.lower() not in stopwords_tambahan and len(w) > 2]
+                    
+                    texts_baru = df_negatif['tweet_clean'].apply(clean_text).tolist()
+                    corpus_baru = [dictionary.doc2bow(text) for text in texts_baru]
+                    
+                    topik_prediksi = []
+                    for doc in corpus_baru:
+                        hasil_topik = lda_model.get_document_topics(doc)
+                        if hasil_topik:
+                            topik_tertinggi = max(hasil_topik, key=lambda x: x[1])[0]
+                            topik_prediksi.append(topik_tertinggi)
+                        else:
+                            topik_prediksi.append(-1)
+                    
+                    df_negatif['Topik_ID'] = topik_prediksi
+                    topik_counts = df_negatif[df_negatif['Topik_ID'] != -1]['Topik_ID'].value_counts().to_dict()
+                    
+                    st.success("✅ Proses Batch Selesai!")
+                    for tid, count in topik_counts.items():
+                        st.error(f"⚠️ **Isu {tid+1}**: Ditemukan {count} keluhan.")
+                else:
+                    st.info("Tidak ada sentimen negatif yang ditemukan.")
