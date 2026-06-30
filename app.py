@@ -1,81 +1,151 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from transformers import pipeline
+import pickle
 
-# Konfigurasi Halaman - Menjadikan UI lebih lega
-st.set_page_config(page_title="BPJS Sentiment Analytics", layout="wide", page_icon="🏥")
+# --- KONFIGURASI HALAMAN ---
+st.set_page_config(page_title="BPJS Command Center", layout="wide", page_icon="🏥")
 
-# --- UI STYLE: MODERN & CLEAN ---
-st.markdown("""
-    <style>
-    /* Mengatur agar setiap kartu memiliki shadow tipis dan sudut melengkung */
-    .css-1r6slp0, .stMetric, .stMarkdown, .stPlotlyChart {
-        padding: 10px;
-    }
-    .card {
-        background-color: #FFFFFF;
-        border-radius: 15px;
-        padding: 20px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        margin-bottom: 20px;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# --- LOAD MODEL (DI-CACHE AGAR CEPAT) ---
+@st.cache_resource
+def load_models():
+    # 1. Load Model Sentimen IndoBERTweet
+    sentiment_model = pipeline(
+        "sentiment-analysis", 
+        model="Aardiiiiy/indobertweet-base-Indonesian-sentiment-analysis"
+    )
+    
+    # 2. Load Model LDA (Berbasis Gensim)
+    try:
+        with open("lda_model.pkl", "rb") as f:
+            # dictionary_gensim adalah pengganti vectorizer di library Gensim
+            lda_model, dictionary_gensim = pickle.load(f)
+    except FileNotFoundError:
+        lda_model, dictionary_gensim = None, None
+        
+    return sentiment_model, lda_model, dictionary_gensim
 
-# --- SIDEBAR: NAVIGATION ---
-with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/BPJS_Kesehatan_logo.svg/1200px-BPJS_Kesehatan_logo.svg.png", width=150)
-    st.title("Control Panel")
-    pilih_data = st.selectbox("Fokus Analisis:", ["Keseluruhan", "Sentimen Negatif saja"])
-    st.divider()
-    st.write("### Tentang")
-    st.caption("Dashboard ini merupakan hasil implementasi deployment model NLP (IndoBERTweet + LDA) untuk evaluasi layanan BPJS Kesehatan.")
+classifier, lda_model, dictionary = load_models()
 
 # --- HEADER ---
 st.title("🏥 BPJS Health Command Center")
-st.markdown("Analisis strategis sentimen publik untuk optimalisasi layanan kesehatan berbasis *data-driven*.")
-
-# --- LOGIKA DATA ---
-data = {'Sentimen': ['Negatif', 'Netral', 'Positif'], 'Jumlah': [2618, 2227, 491]}
-df = pd.DataFrame(data)
-df_plot = df[df['Sentimen'] == 'Negatif'] if pilih_data == "Sentimen Negatif saja" else df
-
-# --- KPI SECTION (Spaced out) ---
-c1, c2, c3 = st.columns(3)
-c1.metric("Total Sampel", "5.336", help="Jumlah total cuitan yang dianalisis")
-c2.metric("Sentimen Negatif", "2.618", "-49,06%", delta_color="inverse")
-c3.metric("Akurasi Model", "92%", help="Skor performa model IndoBERTweet")
-
-st.markdown("<br>", unsafe_allow_html=True)
+st.markdown("Sistem Analisis Sentimen dan Deteksi Isu Kritis Cuitan Masyarakat secara *Real-Time*.")
+st.divider()
 
 # --- TABS ---
-tab1, tab2 = st.tabs(["📊 Distribusi Sentimen", "💡 Analisis Isu Strategis"])
+tab1, tab2 = st.tabs(["📝 Analisis Teks Tunggal", "📂 Analisis Batch & Isu Kritis (CSV)"])
 
+# ==========================================
+# TAB 1: TEKS TUNGGAL
+# ==========================================
 with tab1:
-    col_chart, col_insight = st.columns([2, 1])
-    with col_chart:
-        fig = px.bar(df_plot, x='Sentimen', y='Jumlah', color='Sentimen',
-                     color_discrete_map={'Negatif': '#FF6B6B', 'Netral': '#FFD43B', 'Positif': '#51CF66'},
-                     text_auto=True)
-        fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-    with col_insight:
-        st.markdown("### Insight")
-        st.write("Data menunjukkan dominasi sentimen negatif. Hal ini mengindikasikan adanya celah pada kualitas layanan yang perlu dioptimalkan oleh pihak manajemen.")
+    st.subheader("Uji Coba Sentimen Komentar")
+    user_input = st.text_area("Masukkan teks keluhan atau komentar:", placeholder="Contoh: Antrean di RS Mitra sangat lama dan adminnya kurang ramah.")
+    
+    if st.button("Analisis Sentimen", type="primary"):
+        if user_input.strip() == "":
+            st.warning("Teks tidak boleh kosong!")
+        else:
+            with st.spinner("Menganalisis..."):
+                hasil = classifier(user_input)[0]
+                label = hasil['label'].capitalize()
+                skor = hasil['score'] * 100
+                
+                if label == 'Negative':
+                    st.error(f"**Sentimen: NEGATIF** (Keyakinan: {skor:.2f}%)")
+                elif label == 'Positive':
+                    st.success(f"**Sentimen: POSITIF** (Keyakinan: {skor:.2f}%)")
+                else:
+                    st.warning(f"**Sentimen: NETRAL** (Keyakinan: {skor:.2f}%)")
 
+# ==========================================
+# TAB 2: UPLOAD CSV (BATCH & GENSIM LDA)
+# ==========================================
 with tab2:
-    st.markdown("### 🎯 Prioritas Perbaikan Layanan")
-    # Menggunakan layout yang sangat bersih dan teratur
-    cols = st.columns(3)
-    items = [
-        ("🏥 Fasilitas Kesehatan", "Fokus pada IGD & RS Mitra", "#FF6B6B"),
-        ("📋 Administrasi", "Simplifikasi birokrasi & durasi", "#FFD43B"),
-        ("💰 Biaya & Tagihan", "Transparansi prosedur kelas", "#51CF66")
-    ]
-    for i, col in enumerate(cols):
-        with col:
-            st.markdown(f"**{items[i][0]}**")
-            st.info(f"{items[i][1]}")
+    st.subheader("Unggah Dataset Cuitan Baru")
+    st.info("Sistem akan memproses analisis sentimen untuk seluruh data dan mengekstraksi isu kritis khusus pada sentimen negatif.")
+    
+    uploaded_file = st.file_uploader("Pilih file CSV (Pastikan memiliki kolom bernama 'tweet_clean')", type=["csv"])
+    
+    if uploaded_file is not None:
+        if lda_model is None or dictionary is None:
+            st.error("File 'lda_model.pkl' tidak ditemukan. Fitur deteksi isu dinonaktifkan.")
+        else:
+            # Sesuaikan separator CSV ('sep') jika data Anda menggunakan titik koma (;) atau koma (,)
+            df_baru = pd.read_csv(uploaded_file, sep=";") 
+            
+            if 'tweet_clean' not in df_baru.columns:
+                st.error("Gagal! File CSV harus memiliki kolom dengan nama 'tweet_clean'.")
+            else:
+                with st.spinner("Sistem sedang memproses data. Mohon tunggu..."):
+                    # 1. Prediksi Sentimen
+                    texts = df_baru['tweet_clean'].fillna('').tolist()
+                    results = classifier(texts, truncation=True, max_length=512)
+                    df_baru['Sentimen'] = [res['label'].capitalize() for res in results]
+                    
+                    # 2. Hitung Statistik Sentimen
+                    df_stats = df_baru['Sentimen'].value_counts().reset_index()
+                    df_stats.columns = ['Sentimen', 'Jumlah']
+                    
+                    # 3. Ekstraksi Isu LDA (Menggunakan GENSIM)
+                    df_negatif = df_baru[df_baru['Sentimen'] == 'Negative'].copy()
+                    
+                    if not df_negatif.empty:
+                        # Fungsi pembersih teks baru (Stopwords)
+                        stopwords_tambahan = ['pakai', 'juga', 'buat', 'sama', 'pada', 'bukan', 'lagi', 'saja', 'jadi', 'tapi', 'tidak', 'ini', 'itu', 'atau', 'dengan', 'untuk', 'yang', 'dan', 'di', 'ke']
+                        
+                        def clean_new_text(text):
+                            words = str(text).split()
+                            return [w for w in words if w.lower() not in stopwords_tambahan and len(w) > 2]
+                            
+                        texts_baru = df_negatif['tweet_clean'].apply(clean_new_text).tolist()
+                        
+                        # Konversi teks ke format Bag of Words (BoW) Gensim
+                        corpus_baru = [dictionary.doc2bow(text) for text in texts_baru]
+                        
+                        # Prediksi Topik untuk setiap dokumen
+                        topik_prediksi = []
+                        for doc in corpus_baru:
+                            if len(doc) > 0:
+                                hasil_topik = lda_model[doc]
+                                # Ambil topik dengan probabilitas (skor) tertinggi
+                                topik_tertinggi = max(hasil_topik, key=lambda x: x[1])[0]
+                                topik_prediksi.append(topik_tertinggi)
+                            else:
+                                topik_prediksi.append(-1) # Jika teks kosong setelah dibersihkan
+                                
+                        df_negatif['Topik_ID'] = topik_prediksi
+                        
+                        # Hitung jumlah per topik (abaikan yang -1)
+                        topik_counts = df_negatif[df_negatif['Topik_ID'] != -1]['Topik_ID'].value_counts().to_dict()
+                    else:
+                        topik_counts = {}
 
-st.markdown("<br><br>", unsafe_allow_html=True)
-st.caption("© 2026 Skripsi Deployment - Nur Insan Subekti | UMMI")
+                # 4. Tampilkan Hasil Dasbor
+                st.success("✅ Proses Batch Selesai!")
+                col_chart, col_isu = st.columns([1, 1])
+                
+                with col_chart:
+                    st.markdown("**Distribusi Sentimen**")
+                    fig = px.pie(df_stats, values='Jumlah', names='Sentimen', hole=0.6,
+                                 color='Sentimen', color_discrete_map={'Negative': '#FF6B6B', 'Neutral': '#FFD43B', 'Positive': '#51CF66'})
+                    fig.update_layout(margin=dict(t=0, b=0, l=0, r=0))
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col_isu:
+                    st.markdown("**Isu Kritis Dominan (Dari Sentimen Negatif)**")
+                    
+                    # PENTING: Ubah nama isu ini sesuai dengan hasil kesimpulan topik di skripsi Anda!
+                    nama_isu = {
+                        0: "Topik 1: Kendala Fasilitas & Layanan Faskes", 
+                        1: "Topik 2: Birokrasi Administrasi & Pendaftaran", 
+                        2: "Topik 3: Isu Biaya & Transparansi Tagihan"
+                    }
+                    
+                    if topik_counts:
+                        for topik_id, count in topik_counts.items():
+                            isu_name = nama_isu.get(topik_id, f"Isu Lainnya (Topik {topik_id + 1})")
+                            st.error(f"⚠️ **{isu_name}**: Ditemukan pada {count} cuitan.")
+                    else:
+                        st.info("Tidak ada cuitan sentimen negatif yang signifikan untuk diekstrak isunya.")
