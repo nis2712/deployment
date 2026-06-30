@@ -3,6 +3,5 @@ pandas
 plotly
 transformers
 scikit-learn
-torch
 gensim
 pyLDAvis
