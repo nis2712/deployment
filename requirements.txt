@@ -1,3 +1,6 @@
 streamlit
 pandas
 plotly
+transformers
+scikit-learn
+torch
