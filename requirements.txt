@@ -4,5 +4,5 @@ plotly
 transformers
 scikit-learn
 torch
-gensim
+gensim==4.4.0
 pyLDAvis
