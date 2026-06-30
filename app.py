@@ -1,11 +1,27 @@
 import streamlit as st
+import subprocess
+import sys
+import os
+
+# --- INSTALASI OTOMATIS (Lazy Loading) ---
+def install_if_missing(package):
+    try:
+        __import__(package)
+    except ImportError:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+with st.spinner("Menyiapkan sistem..."):
+    install_if_missing('transformers')
+    install_if_missing('torch')
+    install_if_missing('gensim')
+
+# --- IMPORT SETELAH INSTALASI ---
 import pandas as pd
 import plotly.express as px
 from transformers import pipeline
 import random
 from gensim.models import LdaModel
 from gensim.corpora import Dictionary
-import os
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="BPJS Command Center", layout="wide", page_icon="🏥")
@@ -13,27 +29,47 @@ st.set_page_config(page_title="BPJS Command Center", layout="wide", page_icon="�
 # --- LOAD MODEL ---
 @st.cache_resource
 def load_models():
-    # 1. Load Model Sentimen
     sentiment_model = pipeline("sentiment-analysis", model="Aardiiiiy/indobertweet-base-Indonesian-sentiment-analysis")
-    
-    # 2. Load Model LDA (Format Native Gensim)
     try:
         lda_model = LdaModel.load('lda_model.model')
         dictionary_gensim = Dictionary.load('dictionary.dict')
     except Exception as e:
         st.error(f"Error memuat model LDA: {e}")
         lda_model, dictionary_gensim = None, None
-        
     return sentiment_model, lda_model, dictionary_gensim
 
 classifier, lda_model, dictionary = load_models()
 
-# --- ANTARMUKA ---
+# --- UI ---
 st.title("🏥 BPJS Health Command Center")
-st.markdown("Sistem Analisis Sentimen dan Deteksi Isu Kritis.")
-st.divider()
+tab1, tab2 = st.tabs(["📝 Analisis Teks", "📂 Analisis Batch (CSV)"])
 
-tab1, tab2 = st.tabs(["📝 Analisis Teks Tunggal", "📂 Analisis Batch & Isu Kritis (CSV)"])
+with tab1:
+    st.subheader("Uji Coba Sentimen")
+    
+    daftar_kalimat = [
+        "Antrean di RS Mitra sangat lama dan adminnya kurang ramah.",
+        "Pelayanan BPJS sekarang makin cepat dan sangat mudah.",
+        "Kecewa banget, tagihan iuran bulan ini tiba-tiba naik."
+    ]
+
+    if 'teks_input' not in st.session_state:
+        st.session_state['teks_input'] = ""
+
+    def pilih_kalimat_acak():
+        st.session_state['teks_input'] = random.choice(daftar_kalimat)
+
+    user_input = st.text_area("Masukkan teks:", key='teks_input')
+    
+    col_a, col_d = st.columns([6, 1])
+    with col_a:
+        btn = st.button("🚀 Analisis Sentimen", type="primary", use_container_width=True)
+    with col_d:
+        st.button("🎲", on_click=pilih_kalimat_acak, use_container_width=True)
+
+    if btn and user_input:
+        hasil = classifier(user_input)[0]
+        st.write(f"**Hasil:** {hasil['label'].capitalize()}")
 
 # --- TAB 1: TEKS TUNGGAL ---
 with tab1:
