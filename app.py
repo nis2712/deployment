@@ -1,81 +1,97 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import os
+from gensim.models import LdaModel
+from gensim import corpora
 
-# Konfigurasi Halaman - Menjadikan UI lebih lega
-st.set_page_config(page_title="BPJS Sentiment Analytics", layout="wide", page_icon="🏥")
+# 1. Pemuatan Model (Menggunakan cache agar memori lebih efisien)
+@st.cache_resource
+def load_models():
+    # Mendapatkan lokasi direktori tempat app.py ini berada
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Menggabungkan path direktori dengan nama file model Gensim
+    lda_path = os.path.join(current_dir, 'lda_model.model')
+    dict_path = os.path.join(current_dir, 'dictionary.dict')
+    
+    # Memuat model menggunakan modul bawaan Gensim (bukan joblib)
+    lda_model = LdaModel.load(lda_path)
+    dictionary = corpora.Dictionary.load(dict_path)
+    
+    return lda_model, dictionary
 
-# --- UI STYLE: MODERN & CLEAN ---
-st.markdown("""
-    <style>
-    /* Mengatur agar setiap kartu memiliki shadow tipis dan sudut melengkung */
-    .css-1r6slp0, .stMetric, .stMarkdown, .stPlotlyChart {
-        padding: 10px;
-    }
-    .card {
-        background-color: #FFFFFF;
-        border-radius: 15px;
-        padding: 20px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        margin-bottom: 20px;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# 2. Eksekusi Pemuatan Model
+lda_model, dictionary = load_models()
 
-# --- SIDEBAR: NAVIGATION ---
-with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/BPJS_Kesehatan_logo.svg/1200px-BPJS_Kesehatan_logo.svg.png", width=150)
-    st.title("Control Panel")
-    pilih_data = st.selectbox("Fokus Analisis:", ["Keseluruhan", "Sentimen Negatif saja"])
-    st.divider()
-    st.write("### Tentang")
-    st.caption("Dashboard ini merupakan hasil implementasi deployment model NLP (IndoBERTweet + LDA) untuk evaluasi layanan BPJS Kesehatan.")
+# Pengaturan Konfigurasi Halaman Web
+st.set_page_config(page_title="BPJS Health Insight Tracker", page_icon="🏥", layout="centered")
 
-# --- HEADER ---
-st.title("🏥 BPJS Health Command Center")
-st.markdown("Analisis strategis sentimen publik untuk optimalisasi layanan kesehatan berbasis *data-driven*.")
+st.title("BPJS Health Insight Tracker 🏥")
+st.subheader("Sistem Deteksi Isu Kritis Layanan Publik (LDA)")
 
-# --- LOGIKA DATA ---
-data = {'Sentimen': ['Negatif', 'Netral', 'Positif'], 'Jumlah': [2618, 2227, 491]}
-df = pd.DataFrame(data)
-df_plot = df[df['Sentimen'] == 'Negatif'] if pilih_data == "Sentimen Negatif saja" else df
+# 3. Mode Input Data
+mode = st.radio("Pilih Mode Analisis:", ["Keluhan Tunggal", "Keluhan Batch"])
 
-# --- KPI SECTION (Spaced out) ---
-c1, c2, c3 = st.columns(3)
-c1.metric("Total Sampel", "5.336", help="Jumlah total cuitan yang dianalisis")
-c2.metric("Sentimen Negatif", "2.618", "-49,06%", delta_color="inverse")
-c3.metric("Akurasi Model", "92%", help="Skor performa model IndoBERTweet")
+# --- MODE 1: KELUHAN TUNGGAL ---
+if mode == "Keluhan Tunggal":
+    st.info("💡 Masukkan teks keluhan bersentimen negatif untuk mendeteksi kategori masalahnya.")
+    text = st.text_area("Tulis keluhan di sini:")
+    
+    if st.button("Analisis Isu Kritis"):
+        if text.strip():
+            # Preprocessing sederhana (huruf kecil dan split kata)
+            bow = dictionary.doc2bow(text.lower().split())
+            
+            # Mendapatkan distribusi topik dari teks input
+            topics = lda_model.get_document_topics(bow)
+            
+            st.write("### 🔍 Hasil Deteksi Isu Kritis:")
+            if topics:
+                # Mengurutkan topik berdasarkan probabilitas tertinggi (paling relevan)
+                topics = sorted(topics, key=lambda x: x[1], reverse=True)
+                
+                for topic_id, prob in topics:
+                    # Mengambil kata kunci dari masing-masing topik
+                    topic_words = lda_model.show_topic(topic_id)
+                    words = ", ".join([word for word, weight in topic_words])
+                    
+                    st.success(f"**Topik {topic_id + 1}** (Tingkat Kesesuaian: {prob:.2%})")
+                    st.write(f"**Kata Kunci Dominan:** {words}")
+            else:
+                st.warning("Kata-kata dalam keluhan ini tidak dikenali oleh kamus model data latih.")
+        else:
+            st.error("Harap masukkan teks keluhan terlebih dahulu sebelum menekan tombol.")
 
-st.markdown("<br>", unsafe_allow_html=True)
-
-# --- TABS ---
-tab1, tab2 = st.tabs(["📊 Distribusi Sentimen", "💡 Analisis Isu Strategis"])
-
-with tab1:
-    col_chart, col_insight = st.columns([2, 1])
-    with col_chart:
-        fig = px.bar(df_plot, x='Sentimen', y='Jumlah', color='Sentimen',
-                     color_discrete_map={'Negatif': '#FF6B6B', 'Netral': '#FFD43B', 'Positif': '#51CF66'},
-                     text_auto=True)
-        fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-    with col_insight:
-        st.markdown("### Insight")
-        st.write("Data menunjukkan dominasi sentimen negatif. Hal ini mengindikasikan adanya celah pada kualitas layanan yang perlu dioptimalkan oleh pihak manajemen.")
-
-with tab2:
-    st.markdown("### 🎯 Prioritas Perbaikan Layanan")
-    # Menggunakan layout yang sangat bersih dan teratur
-    cols = st.columns(3)
-    items = [
-        ("🏥 Fasilitas Kesehatan", "Fokus pada IGD & RS Mitra", "#FF6B6B"),
-        ("📋 Administrasi", "Simplifikasi birokrasi & durasi", "#FFD43B"),
-        ("💰 Biaya & Tagihan", "Transparansi prosedur kelas", "#51CF66")
-    ]
-    for i, col in enumerate(cols):
-        with col:
-            st.markdown(f"**{items[i][0]}**")
-            st.info(f"{items[i][1]}")
-
-st.markdown("<br><br>", unsafe_allow_html=True)
-st.caption("© 2026 Skripsi Deployment - Nur Insan Subekti | UMMI")
+# --- MODE 2: KELUHAN BATCH (VIA CSV) ---
+elif mode == "Keluhan Batch":
+    st.info("💡 Unggah file dataset CSV Anda. Pastikan file memiliki kolom dengan nama **'keluhan'**.")
+    uploaded_file = st.file_uploader("Upload file CSV", type=["csv"])
+    
+    if uploaded_file:
+        try:
+            # Membaca file CSV
+            df = pd.read_csv(uploaded_file, sep=';') # Sesuaikan separator (; atau ,) jika perlu
+            
+            st.write("### 📊 Pratinjau Data Keluhan")
+            st.dataframe(df.head())
+            
+            if 'keluhan' in df.columns:
+                st.write("### 📌 Daftar Topik Isu Terdeteksi (Dari Keseluruhan Model)")
+                
+                # Mengambil dan memformat definisi topik dari model LDA
+                global_topics = lda_model.show_topics(formatted=False)
+                
+                for topic_id, words_weights in global_topics:
+                    # Mengekstrak hanya kata-katanya saja
+                    words = ", ".join([word for word, weight in words_weights])
+                    st.markdown(f"- **Isu Kritis {topic_id + 1}:** {words}")
+                    
+                st.markdown("---")
+                st.caption("*(Catatan: Kata-kata di atas mewakili klaster masalah utama yang berhasil dipetakan oleh model dari keseluruhan data latih)*")
+                
+            else:
+                st.error("❌ Gagal memproses: File CSV harus memiliki header kolom bernama 'keluhan'.")
+                st.write("Kolom yang terdeteksi di file Anda:", df.columns.tolist())
+                
+        except Exception as e:
+            st.error(f"Terjadi kesalahan saat membaca file: {e}")
