@@ -11,7 +11,7 @@ def load_models():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
     # Menggabungkan path direktori dengan nama file model Gensim
-    lda_path = os.path.join(current_dir, 'lda_model.model')
+    lda_path = os.path.join(current_dir, 'lda_model.pkl')
     dict_path = os.path.join(current_dir, 'dictionary.dict')
     
     # Memuat model menggunakan modul bawaan Gensim (bukan joblib)
